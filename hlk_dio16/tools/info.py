@@ -32,6 +32,15 @@ async def main():
     logger.info(f"input_state:\n{pformat(input_state)}")
     device_time = await client.device_time()
     logger.info(f"device_time:\n{pformat(device_time)}")
+    for relay in range(1, 17):
+        state = await client.output_ctr(relay, True)
+        logger.info(f"relay {relay} on:\n{pformat(state)}")
+        state = await client.output_ctr(relay, False)
+        logger.info(f"relay {relay} off:\n{pformat(state)}")
+        state = await client.output_ctr(relay, True)
+        logger.info(f"relay {relay} on:\n{pformat(state)}")
+        state = await client.output_ctr(relay, False)
+        logger.info(f"relay {relay} off:\n{pformat(state)}")
     client.stop()
 
 

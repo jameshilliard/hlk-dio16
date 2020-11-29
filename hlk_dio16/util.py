@@ -29,3 +29,22 @@ def format_read(cmd, data=None):
     frame += payload
     frame += pack("B", cksum(frame))
     return frame
+
+def format_relay_cmd(cmd, switches, state):
+    """Format frame to be sent."""
+    state = 0x01 if state else 0x00
+    mask = bytearray(b'\x00\x00')
+    for switch in range(1, 9):
+        if switch in switches:
+            mask[0] = mask[0] | (1 << (switch - 1))
+    for switch in range(9, 17):
+        if switch in switches:
+            mask[1] = mask[1] | (1 << (switch - 9))
+    payload = pack("B", state)
+    payload += mask
+    frame = COMMAND_HEAD
+    frame += pack("B", len(payload) + 2)
+    frame += pack("B", cmd)
+    frame += payload
+    frame += pack("B", cksum(frame))
+    return frame

@@ -3,7 +3,7 @@ import asyncio
 from collections import deque
 import logging
 from hlk_dio16.const import COMMAND_HEAD, Command
-from hlk_dio16.util import cksum, hexdump, format_read
+from hlk_dio16.util import cksum, hexdump, format_read, format_relay_cmd
 
 
 class DIO16Protocol(asyncio.Protocol):
@@ -40,7 +40,6 @@ class DIO16Protocol(asyncio.Protocol):
     def process_frame(self, frame):
         cmd = Command(frame[0])
         data = frame[1:]
-        self.logger.info(f"cmd: {cmd.name}, data: {hexdump(data)}")
         if cmd == Command.OUTPUT_STATE:
             assert len(data) == 2
             states = {}
@@ -70,10 +69,22 @@ class DIO16Protocol(asyncio.Protocol):
             time["Second"] = data[5]
             self.logger.debug(f"device time: {time}")
             self._process_response(cmd, time)
+        elif cmd == Command.TYPE_RESPONSE:
+            assert len(data) == 3
+            resp_cmd = Command(data[0])
+            resp_data = data[1:]
+            if resp_cmd == Command.OUTPUT_CTR:
+                assert resp_data[1] == 0x00
+                resp_val = resp_data[0:1]
+                self.logger.warning(f"OUTPUT_CTR resp, resp_val: {hexdump(resp_val)}")
+                self._process_response(resp_cmd, resp_val)
+            else:
+                self.logger.error(f"failed to parse resp_cmd: {resp_cmd.name}, resp_data: {hexdump(resp_data)}")
+        else:
+            self.logger.error(f"failed to parse cmd: {cmd.name}, data: {hexdump(data)}")
 
     def data_received(self, data):
         """Add incoming data to buffer."""
-        self.logger.info(f"data received: {hexdump(data)}")
         self._buffer += data
         while (
             len(self._buffer) >= 3
@@ -201,9 +212,6 @@ class DIO16Client:
             await self.setup()
             if self.in_transaction:
                 self.protocol.transport.write(self.active_packet)
-            else:
-                packet = format_frame()
-                self.protocol.transport.write(packet)
 
     def register_status_callback(self, callback, switch):
         """Register a callback which will fire when state changes."""
@@ -242,6 +250,17 @@ class DIO16Client:
         packet = format_read(cmd)
         time = await self._send(packet)
         return time
+
+    async def output_ctr(self, relay, state):
+        """Set current relay output state."""
+        relays = {relay}
+        cmd = Command.OUTPUT_CTR
+        self.protocol.last_cmd = cmd
+        packet = format_relay_cmd(cmd, relays, state)
+        await self._send(packet)
+        states = await self.output_state()
+        return states
+
 
 
 async def create_hlk_dio16_connection(
